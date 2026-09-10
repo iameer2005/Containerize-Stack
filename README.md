@@ -249,3 +249,48 @@ Output:
 Ran 7 tests in 4.161s
 OK
 ```
+
+---
+
+## 10. Stage 6: The AI Rematch (AI vs Me)
+
+In Stage 6, we prompted an AI "junior developer" to containerize the CRUD API from memory, placed its output in quarantine (`ai-version/`), and performed a side-by-side code review (`git diff --no-index`).
+
+### The Specification Prompt Used
+```text
+"Containerize a Task CRUD API in Python using FastAPI and PostgreSQL with psycopg v3.
+Requirements:
+1. Dockerfile for the app and docker-compose.yml orchestrating app and PostgreSQL.
+2. Store tasks in a PostgreSQL table (id serial primary key, title text, done boolean).
+3. On startup, create the table and seed 3 example tasks only if the table is empty.
+4. Keep the 5 CRUD endpoints: GET /tasks, GET /tasks/{id}, POST /tasks, PUT /tasks/{id}, DELETE /tasks/{id}.
+5. Use parameterized queries (%s) to prevent SQL injection.
+6. Connect using DATABASE_URL environment variable without hardcoded passwords.
+7. Ensure data persists across container restarts using a volume."
+```
+
+### Code Review: What the AI Did Better vs What It Missed
+
+#### 1. What the AI did well
+- **Direct Parameterized Queries**: The AI correctly utilized `%s` placeholders with `psycopg` rather than naive string formatting.
+- **Pydantic Model Utilization**: It leveraged Pydantic models for request bodies.
+
+#### 2. Three Critical Deficiencies in the AI Version
+1. **Omitted Persistent Docker Volume (`volumes: [taskdata:...]`)**:
+   - Despite being prompted for persistence, the AI failed to define a named volume under the `db` service or in the root `volumes` block. 
+   - **Impact**: Running `docker compose down` and `docker compose up` completely wiped all user data, failing the core persistence requirement.
+2. **Missing Service Healthchecks (`depends_on: condition: service_healthy`)**:
+   - The AI defined simple `depends_on: [db]`. Docker considers a container "started" the millisecond its process begins, but PostgreSQL takes several seconds to initialize database files and open TCP port 5432.
+   - **Impact**: The web application crashed with `psycopg.OperationalError: connection to server at "db" failed` because it attempted connecting before Postgres was ready.
+3. **Breach of Architectural Layering (No Repository Pattern)**:
+   - The AI wrote database logic directly within route handlers using a ad-hoc helper `get_db()`.
+   - **Impact**: Swapping storage to another engine would require rewriting every single route handler. Our hand-built version adheres to the Repository pattern (`TaskRepository`), allowing seamless swapping with zero route edits.
+4. **Error Response Format Violation (`{"detail": ...}` vs `{"error": ...}`)**:
+   - The AI raised standard FastAPI `HTTPException`, which returns `{ "detail": "Task not found" }`. The required API contract is `{ "error": "Task not found" }`.
+
+### Prompt Rematch & Improvement
+In the rematch iteration, the prompt was improved to explicitly require:
+> *"Use Docker Compose service healthchecks with `pg_isready` before starting the web container, declare a named volume `taskdata` mounted to `/var/lib/postgresql/data`, encapsulate database operations inside a repository class implementing an abstract interface, and return errors formatted as `{\"error\": \"...\"}`."*
+
+This revision eliminated the container startup race condition and preserved the repository abstraction.
+
