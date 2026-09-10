@@ -1,0 +1,24 @@
+# Environment variables & secrets (CRITICAL: never commit credentials)
+.env
+*.env.local
+
+# Python cache & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# Local SQLite / data storage artifacts
+*.db
+*.sqlite
+*.sqlite3
+taskdata/
+
+# IDE and OS metadata
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
